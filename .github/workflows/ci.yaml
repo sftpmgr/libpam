@@ -1,0 +1,44 @@
+name: ci
+
+jobs:
+  build_release:
+    name: build and release
+    runs-on: ubuntu-20.04  # Build on Debian-based distro
+    container:
+      image: debian:11.3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Prepare
+        run: |
+          sudo echo "deb-src http://deb.debian.org/debian bullseye main" >> /etc/apt/sources.list
+          sudo echo "deb-src http://deb.debian.org/debian-security/ bullseye-security main" >> /etc/apt/sources.list
+          sudo echo "deb-src http://deb.debian.org/debian bullseye-updates main" >> /etc/apt/sources.list
+          sudo apt update
+          sudo apt install dpkg-dev -y
+          mkdir pam_build
+          sudo chown _apt:root pam_build
+          cd pam_build
+          sudo apt source pam
+          sudo apt build-dep pam -y
+          cd pam-1.4.0
+
+      - name: Patch
+        run: |
+          cd pam_build/pam-1.4.0
+          sed -i "s/PAM_MAX_RESP_SIZE     512/PAM_MAX_RESP_SIZE     4096/g" libpam/include/security/_pam_types.h
+          
+      - name: Build
+        run: |
+          cd pam_build/pam-1.4.0
+          dpkg-buildpackage -rfakeroot -b -uc -us
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          fail_on_unmatched_files: true
+          files: |
+            pam_build/*.deb
